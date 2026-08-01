@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Handwriting AI Generator</title>
+  <title>Handwriting AI Studio</title>
   <style>
     :root {
       --primary: #4f46e5;
@@ -25,7 +25,7 @@
       max-width: 900px;
       margin: 0 auto;
       display: grid;
-      gap: 24px;
+      gap: 20px;
     }
 
     h1 {
@@ -48,7 +48,29 @@
       border: 1px solid var(--border);
     }
 
-    /* Trainer / Drawing Section */
+    /* Auth Bar */
+    .auth-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .auth-inputs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    input[type="email"], input[type="password"] {
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      outline: none;
+    }
+
+    /* Trainer / Canvas */
     .trainer-grid {
       display: flex;
       align-items: center;
@@ -94,13 +116,9 @@
       opacity: 0.9;
     }
 
-    button.secondary {
-      background: #64748b;
-    }
-
-    button.danger {
-      background: #ef4444;
-    }
+    button.secondary { background: #64748b; }
+    button.danger { background: #ef4444; }
+    button.google-btn { background: #4285f4; }
 
     .samples-preview {
       display: flex;
@@ -121,7 +139,7 @@
       gap: 6px;
     }
 
-    /* Output Section */
+    /* Output Controls */
     textarea {
       width: 100%;
       height: 100px;
@@ -155,6 +173,15 @@
       border: 1px solid #ebdca8;
       box-shadow: inset 0 0 10px rgba(0,0,0,0.03);
     }
+
+    .usage-badge {
+      font-weight: bold;
+      color: #e11d48;
+      background: #ffe4e6;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+    }
   </style>
 </head>
 <body>
@@ -162,14 +189,36 @@
 <div class="container">
   <div>
     <h1>Handwriting AI Studio</h1>
-    <p class="subtitle">Sample your handwriting, refine strokes, and render realistic written notes.</p>
+    <p class="subtitle">Trace your handwriting, sync across devices, and generate custom notes.</p>
+  </div>
+
+  <!-- Auth Card -->
+  <div class="card">
+    <div class="auth-container">
+      <div id="userInfo">
+        <strong>Status:</strong> <span id="userStatus">Not Logged In</span>
+      </div>
+      
+      <div id="authForms" class="auth-inputs">
+        <input type="email" id="emailInput" placeholder="Email">
+        <input type="password" id="passInput" placeholder="Password">
+        <button id="emailLoginBtn">Login / Sign Up</button>
+        <button id="googleLoginBtn" class="google-btn">Google Sign-In</button>
+      </div>
+
+      <div id="userProfile" style="display: none; align-items: center; gap: 12px;">
+        <span id="userEmailTag"></span>
+        <span class="usage-badge" id="usageCount">Generations left today: 3/3</span>
+        <button id="logoutBtn" class="secondary">Log Out</button>
+      </div>
+    </div>
   </div>
 
   <!-- Step 1: Input Sample Handwriting -->
   <div class="card">
-    <h2>1. Draw Character Samples</h2>
+    <h2>1. Trace Character Samples</h2>
     <p style="font-size: 0.9rem; color: #64748b;">
-      Characters save automatically to local storage so you don't lose progress on page refresh.
+      Trace over the faint background reference letter to make your writing clean and accurate.
     </p>
     
     <div class="trainer-grid">
@@ -179,7 +228,7 @@
       <div class="btn-group">
         <button id="saveCharBtn">Save Character</button>
         <button id="clearPadBtn" class="secondary">Clear Pad</button>
-        <button id="resetAllBtn" class="danger">Delete All Saved Letters</button>
+        <button id="resetAllBtn" class="danger">Delete Saved Letters</button>
       </div>
     </div>
 
@@ -189,7 +238,7 @@
   <!-- Step 2: Prompt Input & Controls -->
   <div class="card">
     <h2>2. Enter Prompt & Generate</h2>
-    <textarea id="promptInput" placeholder="Type your prompt here...">Hello world! Your saved handwriting will load automatically.</textarea>
+    <textarea id="promptInput" placeholder="Type your prompt here...">Hello world! This is my personalized handwriting powered by AI.</textarea>
 
     <div class="controls">
       <div class="control-group">
@@ -207,8 +256,8 @@
     </div>
 
     <div class="btn-group" style="margin-bottom: 16px;">
-      <button id="generateBtn">Generate Handwriting</button>
-      <button id="copyBtn" class="secondary">Copy Image to Clipboard</button>
+      <button id="generateBtn">Generate Handwriting (3/day)</button>
+      <button id="copyBtn" class="secondary">Copy Image</button>
       <button id="downloadBtn" class="secondary">Download PNG</button>
     </div>
 
@@ -216,7 +265,54 @@
   </div>
 </div>
 
-<script>
+<!-- Firebase SDKs -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { 
+    getAuth, 
+    signInWithPopup, 
+    GoogleAuthProvider, 
+    createUserWithEmailAndPassword, 
+    signInWithEmailAndPassword, 
+    signOut, 
+    onAuthStateChanged 
+  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+  import { 
+    getFirestore, 
+    doc, 
+    getDoc, 
+    setDoc 
+  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+  // Firebase Configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyDHalkE8dB7TycHSrBrkZ65fZ_G6aE465c",
+    authDomain: "emulator-35ec5.firebaseapp.com",
+    projectId: "emulator-35ec5",
+    storageBucket: "emulator-35ec5.firebasestorage.app",
+    messagingSenderId: "358755516525",
+    appId: "1:358755516525:web:85fa64f7ea73336eb4bf64",
+    measurementId: "G-H65KSKGYRH"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  // App State Variables
+  let currentUser = null;
+  let glyphStore = {};
+  let dailyGenerationsCount = 0;
+  const MAX_DAILY_REQUESTS = 3;
+
+  // Generate unique hardware device identifier to stop switching accounts on same device
+  let deviceId = localStorage.getItem('hw_device_id');
+  if (!deviceId) {
+    deviceId = 'dev_' + Math.random().toString(36).substring(2) + Date.now();
+    localStorage.setItem('hw_device_id', deviceId);
+  }
+
+  // Setup Character Selector Options
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!? ";
   const charSelect = document.getElementById('charSelect');
   const samplesList = document.getElementById('samplesList');
@@ -228,17 +324,6 @@
     charSelect.appendChild(opt);
   });
 
-  // Load from Local Storage on init
-  let glyphStore = {};
-  const savedGlyphs = localStorage.getItem('hw_ai_glyphs');
-  if (savedGlyphs) {
-    try {
-      glyphStore = JSON.parse(savedGlyphs);
-    } catch (e) {
-      console.error('Could not parse saved glyphs', e);
-    }
-  }
-
   // Drawing Pad Logic
   const drawCanvas = document.getElementById('drawCanvas');
   const dCtx = drawCanvas.getContext('2d');
@@ -249,26 +334,36 @@
   function resetDrawPad() {
     dCtx.fillStyle = "#ffffff";
     dCtx.fillRect(0, 0, drawCanvas.width, drawCanvas.height);
-    
+
+    // Draw reference watermark letter in background for tracing
+    const currentChar = charSelect.value === 'SPACE' ? ' ' : charSelect.value;
+    if (currentChar !== ' ') {
+      dCtx.font = "110px sans-serif";
+      dCtx.fillStyle = "#f1f5f9"; // Very light guide color
+      dCtx.textAlign = "center";
+      dCtx.textBaseline = "middle";
+      dCtx.fillText(currentChar, 90, 85);
+    }
+
     // Draw baseline guide line
-    dCtx.strokeStyle = "#e2e8f0";
+    dCtx.strokeStyle = "#cbd5e1";
     dCtx.lineWidth = 1;
     dCtx.beginPath();
     dCtx.moveTo(0, 135);
     dCtx.lineTo(180, 135);
     dCtx.stroke();
+
     currentStrokes = [];
   }
+
+  charSelect.addEventListener('change', resetDrawPad);
   resetDrawPad();
 
   function getPos(e) {
     const rect = drawCanvas.getBoundingClientRect();
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    return {
-      x: clientX - rect.left,
-      y: clientY - rect.top
-    };
+    return { x: clientX - rect.left, y: clientY - rect.top };
   }
 
   function startDrawing(e) {
@@ -311,7 +406,6 @@
 
   document.getElementById('clearPadBtn').addEventListener('click', resetDrawPad);
 
-  // Smoothing algorithm using moving average (Makes writing neater)
   function smoothPath(path) {
     if (path.length <= 2) return path;
     const smoothed = [path[0]];
@@ -325,8 +419,8 @@
     return smoothed;
   }
 
-  // Save Sample
-  document.getElementById('saveCharBtn').addEventListener('click', () => {
+  // Save Character
+  document.getElementById('saveCharBtn').addEventListener('click', async () => {
     const char = charSelect.value === 'SPACE' ? ' ' : charSelect.value;
     if (currentStrokes.length === 0 && char !== ' ') {
       alert("Please draw something first!");
@@ -336,19 +430,29 @@
     glyphStore[char] = currentStrokes;
     localStorage.setItem('hw_ai_glyphs', JSON.stringify(glyphStore));
     
+    if (currentUser) {
+      await setDoc(doc(db, "handwriting_app_users", currentUser.uid), {
+        glyphs: JSON.stringify(glyphStore)
+      }, { merge: true });
+    }
+
     updateBadges();
     resetDrawPad();
 
     if (charSelect.selectedIndex < charSelect.options.length - 1) {
       charSelect.selectedIndex++;
+      resetDrawPad();
     }
   });
 
-  // Clear local storage
-  document.getElementById('resetAllBtn').addEventListener('click', () => {
-    if (confirm("Are you sure you want to clear all saved letters?")) {
+  // Reset Saved Letters
+  document.getElementById('resetAllBtn').addEventListener('click', async () => {
+    if (confirm("Clear all saved letters?")) {
       glyphStore = {};
       localStorage.removeItem('hw_ai_glyphs');
+      if (currentUser) {
+        await setDoc(doc(db, "handwriting_app_users", currentUser.uid), { glyphs: "{}" }, { merge: true });
+      }
       updateBadges();
     }
   });
@@ -362,7 +466,106 @@
       samplesList.appendChild(badge);
     });
   }
-  updateBadges();
+
+  // --- Firebase Auth & Local Storage Data Sync ---
+  onAuthStateChanged(auth, async (user) => {
+    currentUser = user;
+    if (user) {
+      document.getElementById('authForms').style.display = 'none';
+      document.getElementById('userProfile').style.display = 'flex';
+      document.getElementById('userStatus').textContent = 'Logged In';
+      document.getElementById('userEmailTag').textContent = user.email || 'Google User';
+
+      // Load user data from Firestore
+      const userRef = doc(db, "handwriting_app_users", user.uid);
+      const docSnap = await getDoc(userRef);
+
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.glyphs) {
+          glyphStore = JSON.parse(data.glyphs);
+          localStorage.setItem('hw_ai_glyphs', data.glyphs);
+          updateBadges();
+        }
+      }
+      checkDailyRateLimit();
+    } else {
+      document.getElementById('authForms').style.display = 'flex';
+      document.getElementById('userProfile').style.display = 'none';
+      document.getElementById('userStatus').textContent = 'Not Logged In';
+      
+      const localGlyphs = localStorage.getItem('hw_ai_glyphs');
+      if (localGlyphs) {
+        glyphStore = JSON.parse(localGlyphs);
+        updateBadges();
+      }
+    }
+  });
+
+  // Auth Event Listeners
+  document.getElementById('googleLoginBtn').addEventListener('click', () => {
+    const provider = new GoogleAuthProvider();
+    signInWithPopup(auth, provider).catch(err => alert(err.message));
+  });
+
+  document.getElementById('emailLoginBtn').addEventListener('click', async () => {
+    const email = document.getElementById('emailInput').value;
+    const password = document.getElementById('passInput').value;
+    if (!email || !password) return alert('Enter email and password');
+
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (err) {
+      if (err.code === 'auth/user-not-found') {
+        await createUserWithEmailAndPassword(auth, email, password);
+      } else {
+        alert(err.message);
+      }
+    }
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', () => signOut(auth));
+
+  // --- Rate Limiting Strategy (Account + Device ID) ---
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  async function checkDailyRateLimit() {
+    if (!currentUser) return true;
+
+    // 1. Account Check
+    const userUsageRef = doc(db, "handwriting_app_limits", `${currentUser.uid}_${todayStr}`);
+    const userSnap = await getDoc(userUsageRef);
+    let userCount = userSnap.exists() ? userSnap.data().count : 0;
+
+    // 2. Hardware Device ID Check (Stops switching accounts on same device)
+    const deviceUsageRef = doc(db, "handwriting_app_limits", `${deviceId}_${todayStr}`);
+    const deviceSnap = await getDoc(deviceUsageRef);
+    let deviceCount = deviceSnap.exists() ? deviceSnap.data().count : 0;
+
+    dailyGenerationsCount = Math.max(userCount, deviceCount);
+
+    const remaining = Math.max(0, MAX_DAILY_REQUESTS - dailyGenerationsCount);
+    document.getElementById('usageCount').textContent = `Generations left today: ${remaining}/${MAX_DAILY_REQUESTS}`;
+
+    return dailyGenerationsCount < MAX_DAILY_REQUESTS;
+  }
+
+  async function incrementDailyLimit() {
+    if (!currentUser) return;
+    dailyGenerationsCount++;
+    
+    // Save to account limit doc
+    await setDoc(doc(db, "handwriting_app_limits", `${currentUser.uid}_${todayStr}`), {
+      count: dailyGenerationsCount
+    });
+
+    // Save to hardware device limit doc
+    await setDoc(doc(db, "handwriting_app_limits", `${deviceId}_${todayStr}`), {
+      count: dailyGenerationsCount
+    });
+
+    checkDailyRateLimit();
+  }
 
   // Rendering Engine
   const outCanvas = document.getElementById('outputCanvas');
@@ -382,7 +585,18 @@
     }
   }
 
-  function generateHandwriting() {
+  async function generateHandwriting() {
+    if (!currentUser) {
+      alert("Please log in to generate handwriting.");
+      return;
+    }
+
+    const allowed = await checkDailyRateLimit();
+    if (!allowed) {
+      alert("Daily limit reached! You have used all 3 requests for today across your device/account. Try again tomorrow.");
+      return;
+    }
+
     renderLinedPaper();
 
     const text = document.getElementById('promptInput').value;
@@ -396,7 +610,6 @@
     const marginX = 40;
     const lineGap = 60;
 
-    // Ink rendering config (Black text)
     oCtx.lineWidth = Math.max(2, fontSize * 0.06);
     oCtx.lineCap = 'round';
     oCtx.lineJoin = 'round';
@@ -447,18 +660,19 @@
         oCtx.restore();
         cursorX += (110 * scale) + (Math.random() * 2);
       } else {
-        // Fallback text in black
         oCtx.font = `${fontSize * 0.8}px sans-serif`;
         oCtx.fillStyle = '#000000';
         oCtx.fillText(char, cursorX, cursorY);
         cursorX += oCtx.measureText(char).width + 4;
       }
     }
+
+    await incrementDailyLimit();
   }
 
   document.getElementById('generateBtn').addEventListener('click', generateHandwriting);
 
-  // Copy to Clipboard Logic
+  // Copy & Download
   document.getElementById('copyBtn').addEventListener('click', async () => {
     try {
       outCanvas.toBlob(async (blob) => {
@@ -467,11 +681,10 @@
         alert('Copied image to clipboard!');
       });
     } catch (err) {
-      alert('Copying image failed. Ensure your browser supports ClipboardItem PNG API.');
+      alert('Could not copy image automatically. Use download instead.');
     }
   });
 
-  // Download Output
   document.getElementById('downloadBtn').addEventListener('click', () => {
     const link = document.createElement('a');
     link.download = 'handwriting.png';
@@ -479,7 +692,6 @@
     link.click();
   });
 
-  // Initial draw
   renderLinedPaper();
 </script>
 </body>
