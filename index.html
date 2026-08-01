@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Handwriting AI Generator</title>
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #1e293b;
+      --border: #e2e8f0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      display: grid;
+      gap: 24px;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 0;
+      color: var(--primary);
+    }
+
+    p.subtitle {
+      text-align: center;
+      color: #64748b;
+      margin-top: 4px;
+    }
+
+    .card {
+      background: var(--card);
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      border: 1px solid var(--border);
+    }
+
+    /* Studio / Training Section */
+    .trainer-grid {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .char-select {
+      font-size: 1.5rem;
+      font-weight: bold;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 2px solid var(--primary);
+      outline: none;
+    }
+
+    canvas.draw-box {
+      border: 2px dashed #cbd5e1;
+      border-radius: 8px;
+      background: #fff;
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    button.secondary {
+      background: #64748b;
+    }
+
+    .samples-preview {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+    }
+
+    .sample-badge {
+      background: #f1f5f9;
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Output Section */
+    textarea {
+      width: 100%;
+      height: 100px;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      font-size: 1rem;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin: 16px 0;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.875rem;
+    }
+
+    canvas.paper-output {
+      width: 100%;
+      height: 350px;
+      border-radius: 8px;
+      background: #fefcf0; /* Notebook style */
+      border: 1px solid #ebdca8;
+      box-shadow: inset 0 0 10px rgba(0,0,0,0.03);
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div>
+    <h1>Handwriting AI Studio</h1>
+    <p class="subtitle">Sample your custom handwriting, then generate natural handwritten text prompts.</p>
+  </div>
+
+  <!-- Step 1: Input Sample Handwriting -->
+  <div class="card">
+    <h2>1. Draw Character Samples</h2>
+    <p style="font-size: 0.9rem; color: #64748b;">Select a character, draw it inside the box, and click <strong>Save Sample</strong>. (The more characters you sample, the better your output will look!)</p>
+    
+    <div class="trainer-grid">
+      <select id="charSelect" class="char-select"></select>
+      <canvas id="drawCanvas" width="150" height="150" class="draw-box"></canvas>
+      
+      <div class="btn-group">
+        <button id="saveCharBtn">Save Character</button>
+        <button id="clearPadBtn" class="secondary">Clear Pad</button>
+      </div>
+    </div>
+
+    <div id="samplesList" class="samples-preview"></div>
+  </div>
+
+  <!-- Step 2: Prompt Input & Controls -->
+  <div class="card">
+    <h2>2. Enter Prompt & Generate</h2>
+    <textarea id="promptInput" placeholder="Type your prompt here... (e.g., Hello world, this is my custom handwritten text!)">Hello world! This AI synthesizes handwriting based on custom sampled glyphs.</textarea>
+
+    <div class="controls">
+      <div class="control-group">
+        <label for="slant">Handwriting Slant/Jitter</label>
+        <input type="range" id="slant" min="0" max="15" value="5">
+      </div>
+      <div class="control-group">
+        <label for="spacing">Word Spacing</label>
+        <input type="range" id="spacing" min="15" max="50" value="25">
+      </div>
+      <div class="control-group">
+        <label for="size">Font Size</label>
+        <input type="range" id="size" min="16" max="48" value="28">
+      </div>
+    </div>
+
+    <div class="btn-group" style="margin-bottom: 16px;">
+      <button id="generateBtn">Generate Handwriting</button>
+      <button id="downloadBtn" class="secondary">Download Image</button>
+    </div>
+
+    <canvas id="outputCanvas" width="800" height="350" class="paper-output"></canvas>
+  </div>
+</div>
+
+<script>
+  // Character Alphabet setup
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!? ";
+  const charSelect = document.getElementById('charSelect');
+  const samplesList = document.getElementById('samplesList');
+  
+  alphabet.split('').forEach(char => {
+    const opt = document.createElement('option');
+    opt.value = char === ' ' ? 'SPACE' : char;
+    opt.textContent = char === ' ' ? 'Space (Blank)' : char;
+    charSelect.appendChild(opt);
+  });
+
+  // Stroke dataset store
+  const glyphStore = {};
+
+  // Drawing Pad Logic
+  const drawCanvas = document.getElementById('drawCanvas');
+  const dCtx = drawCanvas.getContext('2d');
+  let isDrawing = false;
+  let currentStrokes = [];
+  let currentPath = [];
+
+  function resetDrawPad() {
+    dCtx.fillStyle = "#ffffff";
+    dCtx.fillRect(0, 0, drawCanvas.width, drawCanvas.height);
+    // Draw baseline guide line
+    dCtx.strokeStyle = "#e2e8f0";
+    dCtx.lineWidth = 1;
+    dCtx.beginPath();
+    dCtx.moveTo(0, 110);
+    dCtx.lineTo(150, 110);
+    dCtx.stroke();
+    currentStrokes = [];
+  }
+  resetDrawPad();
+
+  function getPos(e) {
+    const rect = drawCanvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top
+    };
+  }
+
+  function startDrawing(e) {
+    isDrawing = true;
+    currentPath = [];
+    const pos = getPos(e);
+    currentPath.push(pos);
+    dCtx.beginPath();
+    dCtx.lineWidth = 3;
+    dCtx.lineCap = 'round';
+    dCtx.strokeStyle = '#0f172a';
+    dCtx.moveTo(pos.x, pos.y);
+  }
+
+  function draw(e) {
+    if (!isDrawing) return;
+    e.preventDefault();
+    const pos = getPos(e);
+    currentPath.push(pos);
+    dCtx.lineTo(pos.x, pos.y);
+    dCtx.stroke();
+  }
+
+  function stopDrawing() {
+    if (isDrawing) {
+      isDrawing = false;
+      if (currentPath.length > 0) {
+        currentStrokes.push(currentPath);
+      }
+    }
+  }
+
+  drawCanvas.addEventListener('mousedown', startDrawing);
+  drawCanvas.addEventListener('mousemove', draw);
+  drawCanvas.addEventListener('mouseup', stopDrawing);
+  drawCanvas.addEventListener('touchstart', startDrawing);
+  drawCanvas.addEventListener('touchmove', draw);
+  drawCanvas.addEventListener('touchend', stopDrawing);
+
+  document.getElementById('clearPadBtn').addEventListener('click', resetDrawPad);
+
+  // Save Sample
+  document.getElementById('saveCharBtn').addEventListener('click', () => {
+    const char = charSelect.value === 'SPACE' ? ' ' : charSelect.value;
+    if (currentStrokes.length === 0 && char !== ' ') {
+      alert("Please draw something first!");
+      return;
+    }
+    
+    // Normalize and scale strokes to unit box (0-1)
+    glyphStore[char] = JSON.parse(JSON.stringify(currentStrokes));
+    updateBadges();
+    resetDrawPad();
+
+    // Auto-advance dropdown to next character
+    if (charSelect.selectedIndex < charSelect.options.length - 1) {
+      charSelect.selectedIndex++;
+    }
+  });
+
+  function updateBadges() {
+    samplesList.innerHTML = '';
+    Object.keys(glyphStore).forEach(key => {
+      const badge = document.createElement('div');
+      badge.className = 'sample-badge';
+      badge.textContent = `'${key === ' ' ? 'Space' : key}' Sampled`;
+      samplesList.appendChild(badge);
+    });
+  }
+
+  // Synthesis & Rendering Engine
+  const outCanvas = document.getElementById('outputCanvas');
+  const oCtx = outCanvas.getContext('2d');
+
+  function renderLinedPaper() {
+    oCtx.fillStyle = "#fefcf0";
+    oCtx.fillRect(0, 0, outCanvas.width, outCanvas.height);
+
+    // Draw notebook lines
+    oCtx.strokeStyle = "#e2e8f0";
+    oCtx.lineWidth = 1;
+    for (let y = 60; y < outCanvas.height; y += 40) {
+      oCtx.beginPath();
+      oCtx.moveTo(0, y);
+      oCtx.lineTo(outCanvas.width, y);
+      oCtx.stroke();
+    }
+  }
+
+  function generateHandwriting() {
+    renderLinedPaper();
+
+    const text = document.getElementById('promptInput').value;
+    const jitterVal = parseFloat(document.getElementById('slant').value);
+    const spaceWidth = parseFloat(document.getElementById('spacing').value);
+    const fontSize = parseFloat(document.getElementById('size').value);
+    
+    const scale = fontSize / 150;
+    let cursorX = 30;
+    let cursorY = 60;
+    const marginX = 30;
+    const lineGap = 40;
+
+    oCtx.lineWidth = 2;
+    oCtx.lineCap = 'round';
+    oCtx.strokeStyle = '#1e3a8a'; // Ink color
+
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+
+      if (char === '\n' || cursorX > outCanvas.width - 50) {
+        cursorX = marginX;
+        cursorY += lineGap;
+        if (cursorY > outCanvas.height - 30) break; // End of page
+      }
+
+      if (char === ' ') {
+        cursorX += spaceWidth;
+        continue;
+      }
+
+      const strokes = glyphStore[char];
+
+      if (strokes && strokes.length > 0) {
+        // Organic variations per letter
+        const letterJitterX = (Math.random() - 0.5) * (jitterVal * 0.3);
+        const letterJitterY = (Math.random() - 0.5) * (jitterVal * 0.3);
+        const letterAngle = (Math.random() - 0.5) * (jitterVal * 0.02);
+
+        oCtx.save();
+        oCtx.translate(cursorX + letterJitterX, cursorY + letterJitterY);
+        oCtx.rotate(letterAngle);
+
+        strokes.forEach(stroke => {
+          if (stroke.length < 2) return;
+          oCtx.beginPath();
+          
+          stroke.forEach((pt, pIdx) => {
+            // Apply subtle stroke jitter
+            const px = pt.x * scale + (Math.random() - 0.5) * (jitterVal * 0.1);
+            const py = (pt.y - 110) * scale + (Math.random() - 0.5) * (jitterVal * 0.1);
+
+            if (pIdx === 0) {
+              oCtx.moveTo(px, py);
+            } else {
+              oCtx.lineTo(px, py);
+            }
+          });
+          oCtx.stroke();
+        });
+
+        oCtx.restore();
+        cursorX += (100 * scale) + (Math.random() * 2);
+      } else {
+        // Fallback standard text rendering if character was not sampled
+        oCtx.font = `${fontSize * 0.7}px sans-serif`;
+        oCtx.fillStyle = '#64748b';
+        oCtx.fillText(char, cursorX, cursorY);
+        cursorX += oCtx.measureText(char).width + 2;
+      }
+    }
+  }
+
+  document.getElementById('generateBtn').addEventListener('click', generateHandwriting);
+
+  // Download Output
+  document.getElementById('downloadBtn').addEventListener('click', () => {
+    const link = document.createElement('a');
+    link.download = 'generated-handwriting.png';
+    link.href = outCanvas.toDataURL();
+    link.click();
+  });
+
+  // Initial draw
+  renderLinedPaper();
+</script>
+</body>
+</html>
