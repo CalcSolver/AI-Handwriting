@@ -56,4 +56,4 @@ Because the project is built with lightweight, zero-dependency web standards, lo
 
 While you're here, check out another cool project—EmeraldOS:
 
-🔗 [CalcSolver / EmeraldOS Repository] (https://github.com/CalcSolver/EmeraldOS)
+🔗 [CalcSolver / EmeraldOS Repository](https://github.com/CalcSolver/EmeraldOS)
