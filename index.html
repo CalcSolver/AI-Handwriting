@@ -319,12 +319,24 @@
         <input type="range" id="slant" min="0" max="15" value="3">
       </div>
       <div class="control-group">
-        <label for="spacing">Word Spacing <span id="spacingVal">45</span></label>
+        <label for="spacing">Word Spacing Base <span id="spacingVal">45</span></label>
         <input type="range" id="spacing" min="20" max="80" value="45">
+      </div>
+      <div class="control-group">
+        <label for="messySpacing">Messy Spacing Jitter <span id="messySpacingVal">12</span></label>
+        <input type="range" id="messySpacing" min="0" max="35" value="12">
+      </div>
+      <div class="control-group">
+        <label for="baselineJitter">Messy Line Bounce <span id="baselineJitterVal">4</span></label>
+        <input type="range" id="baselineJitter" min="0" max="15" value="4">
       </div>
       <div class="control-group">
         <label for="size">Font Size <span id="sizeVal">56</span></label>
         <input type="range" id="size" min="20" max="90" value="56">
+      </div>
+      <div class="control-group">
+        <label for="thickness">Ink Thickness / Boldness <span id="thicknessVal">4.5</span></label>
+        <input type="range" id="thickness" min="1" max="12" step="0.5" value="4.5">
       </div>
     </div>
 
@@ -726,7 +738,10 @@
   // Interactive Sliders Event Listeners
   const slantInput = document.getElementById('slant');
   const spacingInput = document.getElementById('spacing');
+  const messySpacingInput = document.getElementById('messySpacing');
+  const baselineJitterInput = document.getElementById('baselineJitter');
   const sizeInput = document.getElementById('size');
+  const thicknessInput = document.getElementById('thickness');
   const promptInput = document.getElementById('promptInput');
 
   slantInput.addEventListener('input', (e) => {
@@ -739,8 +754,23 @@
     generateHandwriting();
   });
 
+  messySpacingInput.addEventListener('input', (e) => {
+    document.getElementById('messySpacingVal').textContent = e.target.value;
+    generateHandwriting();
+  });
+
+  baselineJitterInput.addEventListener('input', (e) => {
+    document.getElementById('baselineJitterVal').textContent = e.target.value;
+    generateHandwriting();
+  });
+
   sizeInput.addEventListener('input', (e) => {
     document.getElementById('sizeVal').textContent = e.target.value;
+    generateHandwriting();
+  });
+
+  thicknessInput.addEventListener('input', (e) => {
+    document.getElementById('thicknessVal').textContent = e.target.value;
     generateHandwriting();
   });
 
@@ -756,7 +786,10 @@
     const text = promptInput.value;
     const jitterVal = parseFloat(slantInput.value);
     const spaceWidth = parseFloat(spacingInput.value);
+    const messySpacingVal = parseFloat(messySpacingInput.value);
+    const baselineJitterVal = parseFloat(baselineJitterInput.value);
     const fontSize = parseFloat(sizeInput.value);
+    const thicknessVal = parseFloat(thicknessInput.value);
     
     const baseScale = fontSize / 180;
     let cursorX = 40;
@@ -764,10 +797,10 @@
     const marginX = 40;
     const lineGap = 60;
 
-    targetCtx.lineWidth = Math.max(2, fontSize * 0.06);
+    targetCtx.lineWidth = thicknessVal;
     targetCtx.lineCap = 'round';
     targetCtx.lineJoin = 'round';
-    targetCtx.strokeStyle = '#000000';
+    targetCtx.strokeStyle = '#1e1b18'; // Real ink color
 
     for (let i = 0; i < text.length; i++) {
       const char = text[i];
@@ -779,7 +812,9 @@
       }
 
       if (char === ' ') {
-        cursorX += spaceWidth;
+        // Messy word spacing jitter
+        const randomSpaceJitter = (Math.random() - 0.5) * messySpacingVal;
+        cursorX += Math.max(15, spaceWidth + randomSpaceJitter);
         continue;
       }
 
@@ -788,9 +823,10 @@
       const effectiveScale = baseScale * charScaleOverride;
 
       if (strokes && strokes.length > 0) {
-        const letterJitterX = (Math.random() - 0.5) * (jitterVal * 0.3);
-        const letterJitterY = (Math.random() - 0.5) * (jitterVal * 0.3);
-        const letterAngle = (Math.random() - 0.5) * (jitterVal * 0.015);
+        // Messy character jitter, rotation & vertical line bounce
+        const letterJitterX = (Math.random() - 0.5) * (jitterVal * 0.4);
+        const letterJitterY = (Math.random() - 0.5) * (baselineJitterVal * 1.2);
+        const letterAngle = (Math.random() - 0.5) * (jitterVal * 0.025);
 
         targetCtx.save();
         targetCtx.translate(cursorX + letterJitterX, cursorY + letterJitterY);
@@ -801,8 +837,8 @@
           targetCtx.beginPath();
           
           stroke.forEach((pt, pIdx) => {
-            const px = pt.x * effectiveScale + (Math.random() - 0.5) * (jitterVal * 0.05);
-            const py = (pt.y - 135) * effectiveScale + (Math.random() - 0.5) * (jitterVal * 0.05);
+            const px = pt.x * effectiveScale + (Math.random() - 0.5) * (jitterVal * 0.08);
+            const py = (pt.y - 135) * effectiveScale + (Math.random() - 0.5) * (jitterVal * 0.08);
 
             if (pIdx === 0) {
               targetCtx.moveTo(px, py);
@@ -814,11 +850,15 @@
         });
 
         targetCtx.restore();
-        cursorX += (110 * effectiveScale) + (Math.random() * 2);
+        
+        // Organic horizontal spacing variance between letters
+        const messyCharGap = (Math.random() - 0.5) * (messySpacingVal * 0.3);
+        cursorX += (110 * effectiveScale) + messyCharGap + 1;
       } else {
         targetCtx.font = `${fontSize * 0.8 * charScaleOverride}px sans-serif`;
-        targetCtx.fillStyle = '#000000';
-        targetCtx.fillText(char, cursorX, cursorY);
+        targetCtx.fillStyle = '#1e1b18';
+        const bounceY = (Math.random() - 0.5) * baselineJitterVal;
+        targetCtx.fillText(char, cursorX, cursorY + bounceY);
         cursorX += targetCtx.measureText(char).width + 4;
       }
     }
