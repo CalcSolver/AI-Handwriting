@@ -345,18 +345,18 @@
 
   // App State Variables
   let currentUser = null;
-  let glyphStore = {};
+  let glyphStore = JSON.parse(localStorage.getItem('hw_ai_glyphs') || '{}');
   let dailyGenerationsCount = 0;
   const MAX_DAILY_REQUESTS = 3;
 
-  // Generate hardware device identifier to prevent alt-account switching on same machine
+  // Generate hardware device identifier
   let deviceId = localStorage.getItem('hw_device_id');
   if (!deviceId) {
     deviceId = 'dev_' + Math.random().toString(36).substring(2) + Date.now();
     localStorage.setItem('hw_device_id', deviceId);
   }
 
-  // Auth State Listener (Switches between Views)
+  // Auth State Listener
   onAuthStateChanged(auth, async (user) => {
     currentUser = user;
     if (user) {
@@ -365,14 +365,19 @@
       document.getElementById('userEmailTag').textContent = user.email || "Google User";
 
       // Load User Handwriting Glyphs from Cloud Firestore
-      const userRef = doc(db, "handwriting_app_users", user.uid);
-      const docSnap = await getDoc(userRef);
+      try {
+        const userRef = doc(db, "handwriting_app_users", user.uid);
+        const docSnap = await getDoc(userRef);
 
-      if (docSnap.exists() && docSnap.data().glyphs) {
-        glyphStore = JSON.parse(docSnap.data().glyphs);
-        localStorage.setItem('hw_ai_glyphs', docSnap.data().glyphs);
-        updateBadges();
+        if (docSnap.exists() && docSnap.data().glyphs) {
+          glyphStore = JSON.parse(docSnap.data().glyphs);
+          localStorage.setItem('hw_ai_glyphs', docSnap.data().glyphs);
+        }
+      } catch(e) {
+        console.warn("Firestore sync warning, using local storage cache:", e);
       }
+      
+      updateBadges();
       checkDailyRateLimit();
     } else {
       document.getElementById('authView').style.display = 'flex';
@@ -389,8 +394,12 @@
     try {
       await signInWithEmailAndPassword(auth, email, password);
     } catch (err) {
-      if (err.code === 'auth/user-not-found') {
-        await createUserWithEmailAndPassword(auth, email, password);
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+        try {
+          await createUserWithEmailAndPassword(auth, email, password);
+        } catch(signupErr) {
+          alert(signupErr.message);
+        }
       } else {
         alert(err.message);
       }
@@ -448,7 +457,6 @@
   }
 
   charSelect.addEventListener('change', resetDrawPad);
-  resetDrawPad();
 
   function getPos(e) {
     const rect = drawCanvas.getBoundingClientRect();
@@ -472,7 +480,7 @@
 
   function draw(e) {
     if (!isDrawing) return;
-    e.preventDefault();
+    if (e.cancelable) e.preventDefault();
     const pos = getPos(e);
     currentPath.push(pos);
     dCtx.lineTo(pos.x, pos.y);
@@ -491,8 +499,10 @@
   drawCanvas.addEventListener('mousedown', startDrawing);
   drawCanvas.addEventListener('mousemove', draw);
   drawCanvas.addEventListener('mouseup', stopDrawing);
-  drawCanvas.addEventListener('touchstart', startDrawing);
-  drawCanvas.addEventListener('touchmove', draw);
+  drawCanvas.addEventListener('mouseleave', stopDrawing);
+
+  drawCanvas.addEventListener('touchstart', startDrawing, { passive: false });
+  drawCanvas.addEventListener('touchmove', draw, { passive: false });
   drawCanvas.addEventListener('touchend', stopDrawing);
 
   document.getElementById('clearPadBtn').addEventListener('click', resetDrawPad);
@@ -512,9 +522,11 @@
 
   // Save Character
   document.getElementById('saveCharBtn').addEventListener('click', async () => {
-    const char = charSelect.value === 'SPACE' ? ' ' : charSelect.value;
+    const rawVal = charSelect.value;
+    const char = rawVal === 'SPACE' ? ' ' : rawVal;
+    
     if (currentStrokes.length === 0 && char !== ' ') {
-      alert("Please draw something first!");
+      alert("Please draw something on the pad first!");
       return;
     }
     
@@ -522,18 +534,22 @@
     localStorage.setItem('hw_ai_glyphs', JSON.stringify(glyphStore));
     
     if (currentUser) {
-      await setDoc(doc(db, "handwriting_app_users", currentUser.uid), {
-        glyphs: JSON.stringify(glyphStore)
-      }, { merge: true });
+      try {
+        await setDoc(doc(db, "handwriting_app_users", currentUser.uid), {
+          glyphs: JSON.stringify(glyphStore)
+        }, { merge: true });
+      } catch(e) {
+        console.warn("Saved locally (Firestore write issue):", e);
+      }
     }
 
     updateBadges();
-    resetDrawPad();
-
+    
+    // Automatically move to next letter in dropdown
     if (charSelect.selectedIndex < charSelect.options.length - 1) {
       charSelect.selectedIndex++;
-      resetDrawPad();
     }
+    resetDrawPad();
   });
 
   document.getElementById('resetAllBtn').addEventListener('click', async () => {
@@ -541,9 +557,12 @@
       glyphStore = {};
       localStorage.removeItem('hw_ai_glyphs');
       if (currentUser) {
-        await setDoc(doc(db, "handwriting_app_users", currentUser.uid), { glyphs: "{}" }, { merge: true });
+        try {
+          await setDoc(doc(db, "handwriting_app_users", currentUser.uid), { glyphs: "{}" }, { merge: true });
+        } catch(e){}
       }
       updateBadges();
+      resetDrawPad();
     }
   });
 
@@ -561,17 +580,21 @@
   const todayStr = new Date().toISOString().split('T')[0];
 
   async function checkDailyRateLimit() {
-    if (!currentUser) return false;
+    if (!currentUser) return true;
 
-    const userUsageRef = doc(db, "handwriting_app_limits", `${currentUser.uid}_${todayStr}`);
-    const userSnap = await getDoc(userUsageRef);
-    let userCount = userSnap.exists() ? userSnap.data().count : 0;
+    try {
+      const userUsageRef = doc(db, "handwriting_app_limits", `${currentUser.uid}_${todayStr}`);
+      const userSnap = await getDoc(userUsageRef);
+      let userCount = userSnap.exists() ? userSnap.data().count : 0;
 
-    const deviceUsageRef = doc(db, "handwriting_app_limits", `${deviceId}_${todayStr}`);
-    const deviceSnap = await getDoc(deviceUsageRef);
-    let deviceCount = deviceSnap.exists() ? deviceSnap.data().count : 0;
+      const deviceUsageRef = doc(db, "handwriting_app_limits", `${deviceId}_${todayStr}`);
+      const deviceSnap = await getDoc(deviceUsageRef);
+      let deviceCount = deviceSnap.exists() ? deviceSnap.data().count : 0;
 
-    dailyGenerationsCount = Math.max(userCount, deviceCount);
+      dailyGenerationsCount = Math.max(userCount, deviceCount);
+    } catch(e) {
+      console.warn("Could not check cloud limit, falling back to local limit.", e);
+    }
 
     const remaining = Math.max(0, MAX_DAILY_REQUESTS - dailyGenerationsCount);
     document.getElementById('usageCount').textContent = `Generations left today: ${remaining}/${MAX_DAILY_REQUESTS}`;
@@ -580,13 +603,15 @@
   }
 
   async function incrementDailyLimit() {
-    if (!currentUser) return;
     dailyGenerationsCount++;
-    
-    await setDoc(doc(db, "handwriting_app_limits", `${currentUser.uid}_${todayStr}`), { count: dailyGenerationsCount });
-    await setDoc(doc(db, "handwriting_app_limits", `${deviceId}_${todayStr}`), { count: dailyGenerationsCount });
+    const remaining = Math.max(0, MAX_DAILY_REQUESTS - dailyGenerationsCount);
+    document.getElementById('usageCount').textContent = `Generations left today: ${remaining}/${MAX_DAILY_REQUESTS}`;
 
-    checkDailyRateLimit();
+    if (!currentUser) return;
+    try {
+      await setDoc(doc(db, "handwriting_app_limits", `${currentUser.uid}_${todayStr}`), { count: dailyGenerationsCount });
+      await setDoc(doc(db, "handwriting_app_limits", `${deviceId}_${todayStr}`), { count: dailyGenerationsCount });
+    } catch(e){}
   }
 
   // Output Canvas Renderer
@@ -608,8 +633,6 @@
   }
 
   async function generateHandwriting() {
-    if (!currentUser) return;
-
     const allowed = await checkDailyRateLimit();
     if (!allowed) {
       alert("Daily limit reached! You have used all 3 requests for today across your account/device. Try again tomorrow.");
@@ -660,7 +683,7 @@
         oCtx.rotate(letterAngle);
 
         strokes.forEach(stroke => {
-          if (stroke.length < 2) return;
+          if (!stroke || stroke.length < 2) return;
           oCtx.beginPath();
           
           stroke.forEach((pt, pIdx) => {
@@ -711,7 +734,10 @@
     link.click();
   });
 
+  // Initial draw
+  resetDrawPad();
   renderLinedPaper();
+  updateBadges();
 </script>
 </body>
 </html>
