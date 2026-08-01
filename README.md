@@ -28,3 +28,23 @@ Since the app is built with pure HTML, CSS, and Vanilla JavaScript, running it i
 1. **Clone the Repository:**
    ```bash
    git clone [https://github.com/YourUsername/YourRepoName.git](https://github.com/YourUsername/YourRepoName.git)
+
+2.Launch the Application:
+
+        Open index.html directly in any web browser.
+
+        Alternatively, serve it locally using live-server tools (e.g., Live Server extension in VS Code, or npx serve).
+
+📄 License & Terms of Service
+
+    License: This project is proprietary software. All rights reserved. See the LICENSE file for complete details.
+
+    Terms & Anti-Forgery Disclaimer: Use of this application is subject to our strict anti-forgery, anti-fraud, and fair-use policy. Please review our TERMS.md before deploying or distributing.
+
+🚧 Status & Other Projects
+
+    NOTE: This tool is currently under active development!
+
+In the meantime, feel free to check out EmeraldOS:
+
+🔗 EmeraldOS Repository on GitHub
