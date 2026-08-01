@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Handwriting AI Studio</title>
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #1e293b;
+      --border: #e2e8f0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      display: grid;
+      gap: 20px;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 0;
+      color: var(--primary);
+    }
+
+    p.subtitle {
+      text-align: center;
+      color: #64748b;
+      margin-top: 4px;
+    }
+
+    .card {
+      background: var(--card);
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      border: 1px solid var(--border);
+    }
+
+    /* --- LOGIN PAGE VIEW --- */
+    #authView {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 80vh;
+    }
+
+    .auth-card {
+      background: var(--card);
+      padding: 32px;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08);
+      border: 1px solid var(--border);
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    input[type="email"], input[type="password"] {
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      outline: none;
+      font-size: 1rem;
+    }
+
+    .divider {
+      margin: 20px 0;
+      position: relative;
+      color: #94a3b8;
+      font-size: 0.85rem;
+    }
+
+    .divider::before, .divider::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      width: 40%;
+      height: 1px;
+      background: var(--border);
+    }
+    .divider::before { left: 0; }
+    .divider::after { right: 0; }
+
+    /* --- STUDIO APP VIEW --- */
+    #appView {
+      display: none; /* Toggled on when logged in */
+    }
+
+    .auth-status-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .trainer-grid {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .char-select {
+      font-size: 1.5rem;
+      font-weight: bold;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 2px solid var(--primary);
+      outline: none;
+    }
+
+    canvas.draw-box {
+      border: 2px dashed #cbd5e1;
+      border-radius: 8px;
+      background: #fff;
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    button:hover { opacity: 0.9; }
+    button.secondary { background: #64748b; }
+    button.danger { background: #ef4444; }
+    button.google-btn { background: #4285f4; width: 100%; }
+
+    .samples-preview {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+    }
+
+    .sample-badge {
+      background: #f1f5f9;
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+    }
+
+    textarea {
+      width: 100%;
+      height: 100px;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      font-size: 1.1rem;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin: 16px 0;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.875rem;
+    }
+
+    canvas.paper-output {
+      width: 100%;
+      height: 450px;
+      border-radius: 8px;
+      background: #fefcf0;
+      border: 1px solid #ebdca8;
+      box-shadow: inset 0 0 10px rgba(0,0,0,0.03);
+    }
+
+    .usage-badge {
+      font-weight: bold;
+      color: #e11d48;
+      background: #ffe4e6;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+
+<!-- VIEW 1: AUTHENTICATION (LOG IN / SIGN UP) -->
+<div id="authView">
+  <div class="auth-card">
+    <h1>Welcome Back</h1>
+    <p class="subtitle">Log in or sign up to access Handwriting AI Studio</p>
+
+    <form id="loginForm">
+      <input type="email" id="email" placeholder="Email Address" required>
+      <input type="password" id="password" placeholder="Password" required>
+      <button type="submit" id="submitBtn">Log In / Sign Up</button>
+    </form>
+
+    <div class="divider">OR</div>
+
+    <button id="googleBtn" class="google-btn">Continue with Google</button>
+  </div>
+</div>
+
+<!-- VIEW 2: MAIN STUDIO APP -->
+<div id="appView" class="container">
+  <div>
+    <h1>Handwriting AI Studio</h1>
+    <p class="subtitle">Trace your handwriting, sync across devices, and generate custom notes.</p>
+  </div>
+
+  <!-- Auth Status Bar -->
+  <div class="card">
+    <div class="auth-status-bar">
+      <div>
+        <strong>Logged in as:</strong> <span id="userEmailTag">Loading...</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span class="usage-badge" id="usageCount">Generations left: 3/3</span>
+        <button id="logoutBtn" class="secondary">Log Out</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 1: Input Sample Handwriting -->
+  <div class="card">
+    <h2>1. Trace Character Samples</h2>
+    <p style="font-size: 0.9rem; color: #64748b;">
+      Trace over the faint background reference letter to make your writing accurate and clean.
+    </p>
+    
+    <div class="trainer-grid">
+      <select id="charSelect" class="char-select"></select>
+      <canvas id="drawCanvas" width="180" height="180" class="draw-box"></canvas>
+      
+      <div class="btn-group">
+        <button id="saveCharBtn">Save Character</button>
+        <button id="clearPadBtn" class="secondary">Clear Pad</button>
+        <button id="resetAllBtn" class="danger">Delete Saved Letters</button>
+      </div>
+    </div>
+
+    <div id="samplesList" class="samples-preview"></div>
+  </div>
+
+  <!-- Step 2: Prompt Input & Controls -->
+  <div class="card">
+    <h2>2. Enter Prompt & Generate</h2>
+    <textarea id="promptInput" placeholder="Type your prompt here...">Hello world! Generated with custom handwriting AI.</textarea>
+
+    <div class="controls">
+      <div class="control-group">
+        <label for="slant">Handwriting Slant/Jitter</label>
+        <input type="range" id="slant" min="0" max="15" value="3">
+      </div>
+      <div class="control-group">
+        <label for="spacing">Word Spacing</label>
+        <input type="range" id="spacing" min="20" max="80" value="45">
+      </div>
+      <div class="control-group">
+        <label for="size">Font Size</label>
+        <input type="range" id="size" min="30" max="90" value="56">
+      </div>
+    </div>
+
+    <div class="btn-group" style="margin-bottom: 16px;">
+      <button id="generateBtn">Generate Handwriting (3/day)</button>
+      <button id="copyBtn" class="secondary">Copy Handwritten Image</button>
+      <button id="downloadBtn" class="secondary">Download PNG</button>
+    </div>
+
+    <canvas id="outputCanvas" width="900" height="450" class="paper-output"></canvas>
+  </div>
+</div>
+
+<!-- Firebase SDK Modules -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { 
+    getAuth, 
+    signInWithPopup, 
+    GoogleAuthProvider, 
+    createUserWithEmailAndPassword, 
+    signInWithEmailAndPassword, 
+    signOut, 
+    onAuthStateChanged 
+  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+  import { 
+    getFirestore, 
+    doc, 
+    getDoc, 
+    setDoc 
+  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+  // Firebase Configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyDHalkE8dB7TycHSrBrkZ65fZ_G6aE465c",
+    authDomain: "emulator-35ec5.firebaseapp.com",
+    projectId: "emulator-35ec5",
+    storageBucket: "emulator-35ec5.firebasestorage.app",
+    messagingSenderId: "358755516525",
+    appId: "1:358755516525:web:85fa64f7ea73336eb4bf64"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  // App State Variables
+  let currentUser = null;
+  let glyphStore = {};
+  let dailyGenerationsCount = 0;
+  const MAX_DAILY_REQUESTS = 3;
+
+  // Generate hardware device identifier to prevent alt-account switching on same machine
+  let deviceId = localStorage.getItem('hw_device_id');
+  if (!deviceId) {
+    deviceId = 'dev_' + Math.random().toString(36).substring(2) + Date.now();
+    localStorage.setItem('hw_device_id', deviceId);
+  }
+
+  // Auth State Listener (Switches between Views)
+  onAuthStateChanged(auth, async (user) => {
+    currentUser = user;
+    if (user) {
+      document.getElementById('authView').style.display = 'none';
+      document.getElementById('appView').style.display = 'grid';
+      document.getElementById('userEmailTag').textContent = user.email || "Google User";
+
+      // Load User Handwriting Glyphs from Cloud Firestore
+      const userRef = doc(db, "handwriting_app_users", user.uid);
+      const docSnap = await getDoc(userRef);
+
+      if (docSnap.exists() && docSnap.data().glyphs) {
+        glyphStore = JSON.parse(docSnap.data().glyphs);
+        localStorage.setItem('hw_ai_glyphs', docSnap.data().glyphs);
+        updateBadges();
+      }
+      checkDailyRateLimit();
+    } else {
+      document.getElementById('authView').style.display = 'flex';
+      document.getElementById('appView').style.display = 'none';
+    }
+  });
+
+  // Login Handlers
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (err) {
+      if (err.code === 'auth/user-not-found') {
+        await createUserWithEmailAndPassword(auth, email, password);
+      } else {
+        alert(err.message);
+      }
+    }
+  });
+
+  document.getElementById('googleBtn').addEventListener('click', () => {
+    const provider = new GoogleAuthProvider();
+    signInWithPopup(auth, provider).catch(err => alert(err.message));
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', () => signOut(auth));
+
+  // Alphabet dropdown setup
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!? ";
+  const charSelect = document.getElementById('charSelect');
+  const samplesList = document.getElementById('samplesList');
+  
+  alphabet.split('').forEach(char => {
+    const opt = document.createElement('option');
+    opt.value = char === ' ' ? 'SPACE' : char;
+    opt.textContent = char === ' ' ? 'Space (Blank)' : char;
+    charSelect.appendChild(opt);
+  });
+
+  // Drawing Pad Canvas setup
+  const drawCanvas = document.getElementById('drawCanvas');
+  const dCtx = drawCanvas.getContext('2d');
+  let isDrawing = false;
+  let currentStrokes = [];
+  let currentPath = [];
+
+  function resetDrawPad() {
+    dCtx.fillStyle = "#ffffff";
+    dCtx.fillRect(0, 0, drawCanvas.width, drawCanvas.height);
+
+    // Draw reference watermark character in background
+    const currentChar = charSelect.value === 'SPACE' ? ' ' : charSelect.value;
+    if (currentChar !== ' ') {
+      dCtx.font = "110px sans-serif";
+      dCtx.fillStyle = "#f1f5f9";
+      dCtx.textAlign = "center";
+      dCtx.textBaseline = "middle";
+      dCtx.fillText(currentChar, 90, 85);
+    }
+
+    dCtx.strokeStyle = "#cbd5e1";
+    dCtx.lineWidth = 1;
+    dCtx.beginPath();
+    dCtx.moveTo(0, 135);
+    dCtx.lineTo(180, 135);
+    dCtx.stroke();
+
+    currentStrokes = [];
+  }
+
+  charSelect.addEventListener('change', resetDrawPad);
+  resetDrawPad();
+
+  function getPos(e) {
+    const rect = drawCanvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  }
+
+  function startDrawing(e) {
+    isDrawing = true;
+    currentPath = [];
+    const pos = getPos(e);
+    currentPath.push(pos);
+    dCtx.beginPath();
+    dCtx.lineWidth = 3.5;
+    dCtx.lineCap = 'round';
+    dCtx.lineJoin = 'round';
+    dCtx.strokeStyle = '#000000';
+    dCtx.moveTo(pos.x, pos.y);
+  }
+
+  function draw(e) {
+    if (!isDrawing) return;
+    e.preventDefault();
+    const pos = getPos(e);
+    currentPath.push(pos);
+    dCtx.lineTo(pos.x, pos.y);
+    dCtx.stroke();
+  }
+
+  function stopDrawing() {
+    if (isDrawing) {
+      isDrawing = false;
+      if (currentPath.length > 0) {
+        currentStrokes.push(smoothPath(currentPath));
+      }
+    }
+  }
+
+  drawCanvas.addEventListener('mousedown', startDrawing);
+  drawCanvas.addEventListener('mousemove', draw);
+  drawCanvas.addEventListener('mouseup', stopDrawing);
+  drawCanvas.addEventListener('touchstart', startDrawing);
+  drawCanvas.addEventListener('touchmove', draw);
+  drawCanvas.addEventListener('touchend', stopDrawing);
+
+  document.getElementById('clearPadBtn').addEventListener('click', resetDrawPad);
+
+  function smoothPath(path) {
+    if (path.length <= 2) return path;
+    const smoothed = [path[0]];
+    for (let i = 1; i < path.length - 1; i++) {
+      smoothed.push({
+        x: (path[i - 1].x + path[i].x + path[i + 1].x) / 3,
+        y: (path[i - 1].y + path[i].y + path[i + 1].y) / 3
+      });
+    }
+    smoothed.push(path[path.length - 1]);
+    return smoothed;
+  }
+
+  // Save Character
+  document.getElementById('saveCharBtn').addEventListener('click', async () => {
+    const char = charSelect.value === 'SPACE' ? ' ' : charSelect.value;
+    if (currentStrokes.length === 0 && char !== ' ') {
+      alert("Please draw something first!");
+      return;
+    }
+    
+    glyphStore[char] = currentStrokes;
+    localStorage.setItem('hw_ai_glyphs', JSON.stringify(glyphStore));
+    
+    if (currentUser) {
+      await setDoc(doc(db, "handwriting_app_users", currentUser.uid), {
+        glyphs: JSON.stringify(glyphStore)
+      }, { merge: true });
+    }
+
+    updateBadges();
+    resetDrawPad();
+
+    if (charSelect.selectedIndex < charSelect.options.length - 1) {
+      charSelect.selectedIndex++;
+      resetDrawPad();
+    }
+  });
+
+  document.getElementById('resetAllBtn').addEventListener('click', async () => {
+    if (confirm("Clear all saved letters?")) {
+      glyphStore = {};
+      localStorage.removeItem('hw_ai_glyphs');
+      if (currentUser) {
+        await setDoc(doc(db, "handwriting_app_users", currentUser.uid), { glyphs: "{}" }, { merge: true });
+      }
+      updateBadges();
+    }
+  });
+
+  function updateBadges() {
+    samplesList.innerHTML = '';
+    Object.keys(glyphStore).forEach(key => {
+      const badge = document.createElement('div');
+      badge.className = 'sample-badge';
+      badge.textContent = `'${key === ' ' ? 'Space' : key}' Saved`;
+      samplesList.appendChild(badge);
+    });
+  }
+
+  // Daily Limit Checking
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  async function checkDailyRateLimit() {
+    if (!currentUser) return false;
+
+    const userUsageRef = doc(db, "handwriting_app_limits", `${currentUser.uid}_${todayStr}`);
+    const userSnap = await getDoc(userUsageRef);
+    let userCount = userSnap.exists() ? userSnap.data().count : 0;
+
+    const deviceUsageRef = doc(db, "handwriting_app_limits", `${deviceId}_${todayStr}`);
+    const deviceSnap = await getDoc(deviceUsageRef);
+    let deviceCount = deviceSnap.exists() ? deviceSnap.data().count : 0;
+
+    dailyGenerationsCount = Math.max(userCount, deviceCount);
+
+    const remaining = Math.max(0, MAX_DAILY_REQUESTS - dailyGenerationsCount);
+    document.getElementById('usageCount').textContent = `Generations left today: ${remaining}/${MAX_DAILY_REQUESTS}`;
+
+    return dailyGenerationsCount < MAX_DAILY_REQUESTS;
+  }
+
+  async function incrementDailyLimit() {
+    if (!currentUser) return;
+    dailyGenerationsCount++;
+    
+    await setDoc(doc(db, "handwriting_app_limits", `${currentUser.uid}_${todayStr}`), { count: dailyGenerationsCount });
+    await setDoc(doc(db, "handwriting_app_limits", `${deviceId}_${todayStr}`), { count: dailyGenerationsCount });
+
+    checkDailyRateLimit();
+  }
+
+  // Output Canvas Renderer
+  const outCanvas = document.getElementById('outputCanvas');
+  const oCtx = outCanvas.getContext('2d');
+
+  function renderLinedPaper() {
+    oCtx.fillStyle = "#fefcf0";
+    oCtx.fillRect(0, 0, outCanvas.width, outCanvas.height);
+
+    oCtx.strokeStyle = "#e2e8f0";
+    oCtx.lineWidth = 1.5;
+    for (let y = 80; y < outCanvas.height; y += 60) {
+      oCtx.beginPath();
+      oCtx.moveTo(0, y);
+      oCtx.lineTo(outCanvas.width, y);
+      oCtx.stroke();
+    }
+  }
+
+  async function generateHandwriting() {
+    if (!currentUser) return;
+
+    const allowed = await checkDailyRateLimit();
+    if (!allowed) {
+      alert("Daily limit reached! You have used all 3 requests for today across your account/device. Try again tomorrow.");
+      return;
+    }
+
+    renderLinedPaper();
+
+    const text = document.getElementById('promptInput').value;
+    const jitterVal = parseFloat(document.getElementById('slant').value);
+    const spaceWidth = parseFloat(document.getElementById('spacing').value);
+    const fontSize = parseFloat(document.getElementById('size').value);
+    
+    const scale = fontSize / 180;
+    let cursorX = 40;
+    let cursorY = 80;
+    const marginX = 40;
+    const lineGap = 60;
+
+    oCtx.lineWidth = Math.max(2, fontSize * 0.06);
+    oCtx.lineCap = 'round';
+    oCtx.lineJoin = 'round';
+    oCtx.strokeStyle = '#000000';
+
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+
+      if (char === '\n' || cursorX > outCanvas.width - 60) {
+        cursorX = marginX;
+        cursorY += lineGap;
+        if (cursorY > outCanvas.height - 40) break;
+      }
+
+      if (char === ' ') {
+        cursorX += spaceWidth;
+        continue;
+      }
+
+      const strokes = glyphStore[char];
+
+      if (strokes && strokes.length > 0) {
+        const letterJitterX = (Math.random() - 0.5) * (jitterVal * 0.3);
+        const letterJitterY = (Math.random() - 0.5) * (jitterVal * 0.3);
+        const letterAngle = (Math.random() - 0.5) * (jitterVal * 0.015);
+
+        oCtx.save();
+        oCtx.translate(cursorX + letterJitterX, cursorY + letterJitterY);
+        oCtx.rotate(letterAngle);
+
+        strokes.forEach(stroke => {
+          if (stroke.length < 2) return;
+          oCtx.beginPath();
+          
+          stroke.forEach((pt, pIdx) => {
+            const px = pt.x * scale + (Math.random() - 0.5) * (jitterVal * 0.05);
+            const py = (pt.y - 135) * scale + (Math.random() - 0.5) * (jitterVal * 0.05);
+
+            if (pIdx === 0) {
+              oCtx.moveTo(px, py);
+            } else {
+              oCtx.lineTo(px, py);
+            }
+          });
+          oCtx.stroke();
+        });
+
+        oCtx.restore();
+        cursorX += (110 * scale) + (Math.random() * 2);
+      } else {
+        oCtx.font = `${fontSize * 0.8}px sans-serif`;
+        oCtx.fillStyle = '#000000';
+        oCtx.fillText(char, cursorX, cursorY);
+        cursorX += oCtx.measureText(char).width + 4;
+      }
+    }
+
+    await incrementDailyLimit();
+  }
+
+  document.getElementById('generateBtn').addEventListener('click', generateHandwriting);
+
+  // Copy Image to Clipboard
+  document.getElementById('copyBtn').addEventListener('click', async () => {
+    try {
+      outCanvas.toBlob(async (blob) => {
+        const item = new ClipboardItem({ 'image/png': blob });
+        await navigator.clipboard.write([item]);
+        alert('Copied handwriting image to clipboard! You can paste it in Google Docs, Word, or messages.');
+      });
+    } catch (err) {
+      alert('Failed to copy automatically. Use the Download PNG button instead.');
+    }
+  });
+
+  document.getElementById('downloadBtn').addEventListener('click', () => {
+    const link = document.createElement('a');
+    link.download = 'handwriting.png';
+    link.href = outCanvas.toDataURL();
+    link.click();
+  });
+
+  renderLinedPaper();
+</script>
+</body>
+</html>
