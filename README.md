@@ -3,6 +3,9 @@
 [![Live Demo](https://img.shields.io/badge/Web_App-Live_Demo-4f46e5?style=for-the-badge&logo=vercel)](https://my-handwriting-ai.vercel.app/)
 [![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github)](https://github.com/CalcSolver/AI-Handwriting)
 
+##DISCLAIMER⚠️
+This is an iframe of the acutal code which is in a secret repo
+
 **Handwriting AI Studio** is a web-based handwriting generation engine that transforms digital text—such as responses from ChatGPT—into your own natural, custom handwriting. Trace your personal alphabet once, fine-tune the character geometry, and export clean handwritten notes in seconds.
 
 🚀 **Try the live app now:** [my-handwriting-ai.vercel.app](https://my-handwriting-ai.vercel.app/)
