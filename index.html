@@ -330,8 +330,8 @@
 
     <div class="btn-group" style="margin-bottom: 16px;">
       <button id="generateBtn">Generate Handwriting</button>
-      <button id="copyTextBtn" class="secondary">Copy Text Only</button>
-      <button id="downloadBtn" class="secondary">Download Image PNG</button>
+      <button id="copyImgBtn" class="secondary">Copy Handwriting Image</button>
+      <button id="downloadBtn" class="secondary">Download PNG</button>
     </div>
 
     <canvas id="outputCanvas" width="900" height="450" class="paper-output"></canvas>
@@ -374,12 +374,8 @@
   let glyphStore = JSON.parse(localStorage.getItem('hw_ai_glyphs') || '{}');
   let charScaleStore = JSON.parse(localStorage.getItem('hw_ai_scales') || '{}');
 
-  let dailyGenerationsCount = 0;
   const MAX_DAILY_REQUESTS = 3;
-
-  function isUnlimitedUser() {
-    return localStorage.getItem('hw_unlimited_pass') === 'true';
-  }
+  const todayStr = new Date().toISOString().split('T')[0];
 
   let deviceId = localStorage.getItem('hw_device_id');
   if (!deviceId) {
@@ -672,53 +668,59 @@
     alert(`Size scale for '${char}' set to ${val}x`);
   });
 
-  // Limits Handling
-  const todayStr = new Date().toISOString().split('T')[0];
+  // Persistent Daily Limit System
+  function getLocalUsageCount() {
+    const storedDate = localStorage.getItem('hw_usage_date');
+    if (storedDate !== todayStr) {
+      localStorage.setItem('hw_usage_date', todayStr);
+      localStorage.setItem('hw_usage_count', '0');
+      return 0;
+    }
+    return parseInt(localStorage.getItem('hw_usage_count') || '0', 10);
+  }
 
   async function checkDailyRateLimit() {
     const badgeEl = document.getElementById('usageCount');
+    let usageCount = getLocalUsageCount();
 
-    if (isUnlimitedUser()) {
-      badgeEl.textContent = "Status: UNLIMITED (Admin Key)";
-      badgeEl.classList.add('unlimited');
-      return true;
+    if (currentUser) {
+      try {
+        const userUsageRef = doc(db, "handwriting_app_limits", `${currentUser.uid}_${todayStr}`);
+        const userSnap = await getDoc(userUsageRef);
+        if (userSnap.exists()) {
+          usageCount = Math.max(usageCount, userSnap.data().count);
+        }
+
+        const deviceUsageRef = doc(db, "handwriting_app_limits", `${deviceId}_${todayStr}`);
+        const deviceSnap = await getDoc(deviceUsageRef);
+        if (deviceSnap.exists()) {
+          usageCount = Math.max(usageCount, deviceSnap.data().count);
+        }
+      } catch(e) {
+        console.warn("Cloud limit check error:", e);
+      }
     }
 
-    badgeEl.classList.remove('unlimited');
-    if (!currentUser) return true;
-
-    try {
-      const userUsageRef = doc(db, "handwriting_app_limits", `${currentUser.uid}_${todayStr}`);
-      const userSnap = await getDoc(userUsageRef);
-      let userCount = userSnap.exists() ? userSnap.data().count : 0;
-
-      const deviceUsageRef = doc(db, "handwriting_app_limits", `${deviceId}_${todayStr}`);
-      const deviceSnap = await getDoc(deviceUsageRef);
-      let deviceCount = deviceSnap.exists() ? deviceSnap.data().count : 0;
-
-      dailyGenerationsCount = Math.max(userCount, deviceCount);
-    } catch(e) {
-      console.warn("Cloud limit fetch warning:", e);
-    }
-
-    const remaining = Math.max(0, MAX_DAILY_REQUESTS - dailyGenerationsCount);
+    localStorage.setItem('hw_usage_count', usageCount.toString());
+    const remaining = Math.max(0, MAX_DAILY_REQUESTS - usageCount);
     badgeEl.textContent = `Generations left today: ${remaining}/${MAX_DAILY_REQUESTS}`;
 
-    return dailyGenerationsCount < MAX_DAILY_REQUESTS;
+    return usageCount < MAX_DAILY_REQUESTS;
   }
 
   async function incrementDailyLimit() {
-    if (isUnlimitedUser()) return;
+    let usageCount = getLocalUsageCount() + 1;
+    localStorage.setItem('hw_usage_count', usageCount.toString());
 
-    dailyGenerationsCount++;
-    const remaining = Math.max(0, MAX_DAILY_REQUESTS - dailyGenerationsCount);
+    const remaining = Math.max(0, MAX_DAILY_REQUESTS - usageCount);
     document.getElementById('usageCount').textContent = `Generations left today: ${remaining}/${MAX_DAILY_REQUESTS}`;
 
-    if (!currentUser) return;
-    try {
-      await setDoc(doc(db, "handwriting_app_limits", `${currentUser.uid}_${todayStr}`), { count: dailyGenerationsCount });
-      await setDoc(doc(db, "handwriting_app_limits", `${deviceId}_${todayStr}`), { count: dailyGenerationsCount });
-    } catch(e){}
+    if (currentUser) {
+      try {
+        await setDoc(doc(db, "handwriting_app_limits", `${currentUser.uid}_${todayStr}`), { count: usageCount });
+        await setDoc(doc(db, "handwriting_app_limits", `${deviceId}_${todayStr}`), { count: usageCount });
+      } catch(e){}
+    }
   }
 
   // Interactive Sliders Event Listeners
@@ -750,23 +752,7 @@
   const outCanvas = document.getElementById('outputCanvas');
   const oCtx = outCanvas.getContext('2d');
 
-  function renderLinedPaper() {
-    oCtx.fillStyle = "#fefcf0";
-    oCtx.fillRect(0, 0, outCanvas.width, outCanvas.height);
-
-    oCtx.strokeStyle = "#e2e8f0";
-    oCtx.lineWidth = 1.5;
-    for (let y = 80; y < outCanvas.height; y += 60) {
-      oCtx.beginPath();
-      oCtx.moveTo(0, y);
-      oCtx.lineTo(outCanvas.width, y);
-      oCtx.stroke();
-    }
-  }
-
-  async function generateHandwriting() {
-    renderLinedPaper();
-
+  function renderStrokesOnly(targetCtx) {
     const text = promptInput.value;
     const jitterVal = parseFloat(slantInput.value);
     const spaceWidth = parseFloat(spacingInput.value);
@@ -778,10 +764,10 @@
     const marginX = 40;
     const lineGap = 60;
 
-    oCtx.lineWidth = Math.max(2, fontSize * 0.06);
-    oCtx.lineCap = 'round';
-    oCtx.lineJoin = 'round';
-    oCtx.strokeStyle = '#000000';
+    targetCtx.lineWidth = Math.max(2, fontSize * 0.06);
+    targetCtx.lineCap = 'round';
+    targetCtx.lineJoin = 'round';
+    targetCtx.strokeStyle = '#000000';
 
     for (let i = 0; i < text.length; i++) {
       const char = text[i];
@@ -806,64 +792,94 @@
         const letterJitterY = (Math.random() - 0.5) * (jitterVal * 0.3);
         const letterAngle = (Math.random() - 0.5) * (jitterVal * 0.015);
 
-        oCtx.save();
-        oCtx.translate(cursorX + letterJitterX, cursorY + letterJitterY);
-        oCtx.rotate(letterAngle);
+        targetCtx.save();
+        targetCtx.translate(cursorX + letterJitterX, cursorY + letterJitterY);
+        targetCtx.rotate(letterAngle);
 
         strokes.forEach(stroke => {
           if (!stroke || stroke.length < 2) return;
-          oCtx.beginPath();
+          targetCtx.beginPath();
           
           stroke.forEach((pt, pIdx) => {
             const px = pt.x * effectiveScale + (Math.random() - 0.5) * (jitterVal * 0.05);
             const py = (pt.y - 135) * effectiveScale + (Math.random() - 0.5) * (jitterVal * 0.05);
 
             if (pIdx === 0) {
-              oCtx.moveTo(px, py);
+              targetCtx.moveTo(px, py);
             } else {
-              oCtx.lineTo(px, py);
+              targetCtx.lineTo(px, py);
             }
           });
-          oCtx.stroke();
+          targetCtx.stroke();
         });
 
-        oCtx.restore();
+        targetCtx.restore();
         cursorX += (110 * effectiveScale) + (Math.random() * 2);
       } else {
-        oCtx.font = `${fontSize * 0.8 * charScaleOverride}px sans-serif`;
-        oCtx.fillStyle = '#000000';
-        oCtx.fillText(char, cursorX, cursorY);
-        cursorX += oCtx.measureText(char).width + 4;
+        targetCtx.font = `${fontSize * 0.8 * charScaleOverride}px sans-serif`;
+        targetCtx.fillStyle = '#000000';
+        targetCtx.fillText(char, cursorX, cursorY);
+        cursorX += targetCtx.measureText(char).width + 4;
       }
     }
+  }
+
+  function renderLinedPaper() {
+    oCtx.fillStyle = "#fefcf0";
+    oCtx.fillRect(0, 0, outCanvas.width, outCanvas.height);
+
+    oCtx.strokeStyle = "#e2e8f0";
+    oCtx.lineWidth = 1.5;
+    for (let y = 80; y < outCanvas.height; y += 60) {
+      oCtx.beginPath();
+      oCtx.moveTo(0, y);
+      oCtx.lineTo(outCanvas.width, y);
+      oCtx.stroke();
+    }
+  }
+
+  async function generateHandwriting() {
+    renderLinedPaper();
+    renderStrokesOnly(oCtx);
   }
 
   document.getElementById('generateBtn').addEventListener('click', async () => {
     const allowed = await checkDailyRateLimit();
     if (!allowed) {
-      alert("Daily limit reached! Use your bookmarklet access key to bypass.");
+      alert("Daily limit of 3 generations reached! Check back tomorrow.");
       return;
     }
     await generateHandwriting();
     await incrementDailyLimit();
   });
 
-  // COPY TEXT ONLY FUNCTION (Leaves out paper background entirely)
-  document.getElementById('copyTextBtn').addEventListener('click', async () => {
-    const textToCopy = promptInput.value;
-    if (!textToCopy.trim()) {
-      alert('Prompt box is empty!');
-      return;
-    }
-
+  // COPY TRANSPARENT HANDWRITING PNG TO CLIPBOARD
+  document.getElementById('copyImgBtn').addEventListener('click', async () => {
     try {
-      await navigator.clipboard.writeText(textToCopy);
-      alert('Copied text to clipboard!');
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = outCanvas.width;
+      tempCanvas.height = outCanvas.height;
+      const tempCtx = tempCanvas.getContext('2d');
+
+      // Draw only strokes (transparent background)
+      renderStrokesOnly(tempCtx);
+
+      tempCanvas.toBlob(async (blob) => {
+        if (!blob) {
+          alert("Failed to render handwriting image.");
+          return;
+        }
+        try {
+          const item = new ClipboardItem({ "image/png": blob });
+          await navigator.clipboard.write([item]);
+          alert("Handwriting image copied to clipboard! You can now paste it directly into Word, Docs, or messages.");
+        } catch (err) {
+          console.error("Clipboard copy error:", err);
+          alert("Direct image clipboard copy is not supported in this browser environment. You can use 'Download PNG' instead!");
+        }
+      }, "image/png");
     } catch (err) {
-      // Fallback method for older browsers or restricted security contexts
-      promptInput.select();
-      document.execCommand('copy');
-      alert('Copied text to clipboard!');
+      alert("Could not copy image: " + err.message);
     }
   });
 
