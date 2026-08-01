@@ -101,7 +101,7 @@
 
     /* --- STUDIO APP VIEW --- */
     #appView {
-      display: none; /* Toggled on when logged in */
+      display: none;
     }
 
     .auth-status-bar {
@@ -217,6 +217,11 @@
       border-radius: 20px;
       font-size: 0.85rem;
     }
+
+    .usage-badge.unlimited {
+      color: #047857;
+      background: #d1fae5;
+    }
   </style>
 </head>
 <body>
@@ -301,7 +306,7 @@
     </div>
 
     <div class="btn-group" style="margin-bottom: 16px;">
-      <button id="generateBtn">Generate Handwriting (3/day)</button>
+      <button id="generateBtn">Generate Handwriting</button>
       <button id="copyBtn" class="secondary">Copy Handwritten Image</button>
       <button id="downloadBtn" class="secondary">Download PNG</button>
     </div>
@@ -349,6 +354,11 @@
   let dailyGenerationsCount = 0;
   const MAX_DAILY_REQUESTS = 3;
 
+  // Check Bookmarklet Access Key Status
+  function isUnlimitedUser() {
+    return localStorage.getItem('hw_unlimited_pass') === 'true';
+  }
+
   // Generate hardware device identifier
   let deviceId = localStorage.getItem('hw_device_id');
   if (!deviceId) {
@@ -364,7 +374,6 @@
       document.getElementById('appView').style.display = 'grid';
       document.getElementById('userEmailTag').textContent = user.email || "Google User";
 
-      // Load User Handwriting Glyphs from Cloud Firestore
       try {
         const userRef = doc(db, "handwriting_app_users", user.uid);
         const docSnap = await getDoc(userRef);
@@ -436,7 +445,6 @@
     dCtx.fillStyle = "#ffffff";
     dCtx.fillRect(0, 0, drawCanvas.width, drawCanvas.height);
 
-    // Draw reference watermark character in background
     const currentChar = charSelect.value === 'SPACE' ? ' ' : charSelect.value;
     if (currentChar !== ' ') {
       dCtx.font = "110px sans-serif";
@@ -545,7 +553,6 @@
 
     updateBadges();
     
-    // Automatically move to next letter in dropdown
     if (charSelect.selectedIndex < charSelect.options.length - 1) {
       charSelect.selectedIndex++;
     }
@@ -576,10 +583,20 @@
     });
   }
 
-  // Daily Limit Checking
+  // Daily Limit Checking with Access Key Support
   const todayStr = new Date().toISOString().split('T')[0];
 
   async function checkDailyRateLimit() {
+    const badgeEl = document.getElementById('usageCount');
+
+    if (isUnlimitedUser()) {
+      badgeEl.textContent = "Status: UNLIMITED (Admin Key)";
+      badgeEl.classList.add('unlimited');
+      return true;
+    }
+
+    badgeEl.classList.remove('unlimited');
+
     if (!currentUser) return true;
 
     try {
@@ -597,12 +614,14 @@
     }
 
     const remaining = Math.max(0, MAX_DAILY_REQUESTS - dailyGenerationsCount);
-    document.getElementById('usageCount').textContent = `Generations left today: ${remaining}/${MAX_DAILY_REQUESTS}`;
+    badgeEl.textContent = `Generations left today: ${remaining}/${MAX_DAILY_REQUESTS}`;
 
     return dailyGenerationsCount < MAX_DAILY_REQUESTS;
   }
 
   async function incrementDailyLimit() {
+    if (isUnlimitedUser()) return; // Skip increments for admin key holders
+
     dailyGenerationsCount++;
     const remaining = Math.max(0, MAX_DAILY_REQUESTS - dailyGenerationsCount);
     document.getElementById('usageCount').textContent = `Generations left today: ${remaining}/${MAX_DAILY_REQUESTS}`;
@@ -632,16 +651,16 @@
     }
   }
 
-  async function generateHandwriting() {
+  async function generateHandwriting(customText) {
     const allowed = await checkDailyRateLimit();
     if (!allowed) {
-      alert("Daily limit reached! You have used all 3 requests for today across your account/device. Try again tomorrow.");
+      alert("Daily limit reached! Use your bookmarklet access key to bypass.");
       return;
     }
 
     renderLinedPaper();
 
-    const text = document.getElementById('promptInput').value;
+    const text = customText || document.getElementById('promptInput').value;
     const jitterVal = parseFloat(document.getElementById('slant').value);
     const spaceWidth = parseFloat(document.getElementById('spacing').value);
     const fontSize = parseFloat(document.getElementById('size').value);
@@ -710,9 +729,10 @@
     }
 
     await incrementDailyLimit();
+    return outCanvas.toDataURL('image/png');
   }
 
-  document.getElementById('generateBtn').addEventListener('click', generateHandwriting);
+  document.getElementById('generateBtn').addEventListener('click', () => generateHandwriting());
 
   // Copy Image to Clipboard
   document.getElementById('copyBtn').addEventListener('click', async () => {
@@ -720,7 +740,7 @@
       outCanvas.toBlob(async (blob) => {
         const item = new ClipboardItem({ 'image/png': blob });
         await navigator.clipboard.write([item]);
-        alert('Copied handwriting image to clipboard! You can paste it in Google Docs, Word, or messages.');
+        alert('Copied handwriting image to clipboard! You can paste it anywhere.');
       });
     } catch (err) {
       alert('Failed to copy automatically. Use the Download PNG button instead.');
