@@ -228,33 +228,6 @@
       color: #047857;
       background: #d1fae5;
     }
-
-    /* Modal for Image Copy Fallback */
-    .modal-overlay {
-      display: none;
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.6);
-      justify-content: center;
-      align-items: center;
-      z-index: 1000;
-    }
-
-    .modal-content {
-      background: white;
-      padding: 20px;
-      border-radius: 12px;
-      max-width: 90%;
-      max-height: 90%;
-      text-align: center;
-    }
-
-    .modal-content img {
-      max-width: 100%;
-      max-height: 60vh;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-    }
   </style>
 </head>
 <body>
@@ -318,7 +291,7 @@
     <div id="samplesList" class="samples-preview"></div>
   </div>
 
-  <!-- NEW SECTION: Per-Character Fine Tuning -->
+  <!-- Step 2: Individual Character Sizing -->
   <div class="card">
     <h2>2. Individual Character Sizing</h2>
     <p style="font-size: 0.9rem; color: #64748b;">
@@ -357,22 +330,11 @@
 
     <div class="btn-group" style="margin-bottom: 16px;">
       <button id="generateBtn">Generate Handwriting</button>
-      <button id="copyBtn" class="secondary">Copy Handwritten Image</button>
-      <button id="downloadBtn" class="secondary">Download PNG</button>
+      <button id="copyTextBtn" class="secondary">Copy Text Only</button>
+      <button id="downloadBtn" class="secondary">Download Image PNG</button>
     </div>
 
     <canvas id="outputCanvas" width="900" height="450" class="paper-output"></canvas>
-  </div>
-</div>
-
-<!-- Modal for Copy Fallback -->
-<div id="copyModal" class="modal-overlay">
-  <div class="modal-content">
-    <h3>Image Ready</h3>
-    <p style="font-size: 0.85rem; color: #64748b;">Long-press or right-click the image below and choose <strong>"Copy Image"</strong>.</p>
-    <img id="modalImg" src="" alt="Handwriting Output">
-    <br><br>
-    <button id="closeModalBtn">Done</button>
   </div>
 </div>
 
@@ -409,9 +371,7 @@
   const db = getFirestore(app);
 
   let currentUser = null;
-  // Stores stroke data per character
   let glyphStore = JSON.parse(localStorage.getItem('hw_ai_glyphs') || '{}');
-  // Stores custom scaling factor per character (default 1.0)
   let charScaleStore = JSON.parse(localStorage.getItem('hw_ai_scales') || '{}');
 
   let dailyGenerationsCount = 0;
@@ -838,7 +798,6 @@
       }
 
       const strokes = glyphStore[char];
-      // Get individual scaling factor if available
       const charScaleOverride = charScaleStore[char] || 1.0;
       const effectiveScale = baseScale * charScaleOverride;
 
@@ -889,32 +848,23 @@
     await incrementDailyLimit();
   });
 
-  // Robust Copy Handler with Modal Fallback
-  document.getElementById('copyBtn').addEventListener('click', async () => {
-    try {
-      outCanvas.toBlob(async (blob) => {
-        try {
-          const item = new ClipboardItem({ 'image/png': blob });
-          await navigator.clipboard.write([item]);
-          alert('Copied handwriting image to clipboard!');
-        } catch (clipErr) {
-          showCopyModal();
-        }
-      });
-    } catch (err) {
-      showCopyModal();
+  // COPY TEXT ONLY FUNCTION (Leaves out paper background entirely)
+  document.getElementById('copyTextBtn').addEventListener('click', async () => {
+    const textToCopy = promptInput.value;
+    if (!textToCopy.trim()) {
+      alert('Prompt box is empty!');
+      return;
     }
-  });
 
-  function showCopyModal() {
-    const modal = document.getElementById('copyModal');
-    const img = document.getElementById('modalImg');
-    img.src = outCanvas.toDataURL('image/png');
-    modal.style.display = 'flex';
-  }
-
-  document.getElementById('closeModalBtn').addEventListener('click', () => {
-    document.getElementById('copyModal').style.display = 'none';
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      alert('Copied text to clipboard!');
+    } catch (err) {
+      // Fallback method for older browsers or restricted security contexts
+      promptInput.select();
+      document.execCommand('copy');
+      alert('Copied text to clipboard!');
+    }
   });
 
   document.getElementById('downloadBtn').addEventListener('click', () => {
