@@ -200,6 +200,12 @@
       font-size: 0.875rem;
     }
 
+    .control-group label {
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+    }
+
     canvas.paper-output {
       width: 100%;
       height: 450px;
@@ -222,11 +228,38 @@
       color: #047857;
       background: #d1fae5;
     }
+
+    /* Modal for Image Copy Fallback */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.6);
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    .modal-content {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      max-width: 90%;
+      max-height: 90%;
+      text-align: center;
+    }
+
+    .modal-content img {
+      max-width: 100%;
+      max-height: 60vh;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
   </style>
 </head>
 <body>
 
-<!-- VIEW 1: AUTHENTICATION (LOG IN / SIGN UP) -->
+<!-- VIEW 1: AUTHENTICATION -->
 <div id="authView">
   <div class="auth-card">
     <h1>Welcome Back</h1>
@@ -285,23 +318,40 @@
     <div id="samplesList" class="samples-preview"></div>
   </div>
 
-  <!-- Step 2: Prompt Input & Controls -->
+  <!-- NEW SECTION: Per-Character Fine Tuning -->
   <div class="card">
-    <h2>2. Enter Prompt & Generate</h2>
+    <h2>2. Individual Character Sizing</h2>
+    <p style="font-size: 0.9rem; color: #64748b;">
+      Select a saved character below to fine-tune its scale relative to other letters.
+    </p>
+
+    <div class="trainer-grid">
+      <select id="adjustCharSelect" class="char-select"></select>
+      <div class="control-group" style="flex: 1; min-width: 200px;">
+        <label for="charScale">Specific Character Size Scale <span id="charScaleVal">1.0x</span></label>
+        <input type="range" id="charScale" min="0.5" max="2.0" step="0.05" value="1.0">
+      </div>
+      <button id="saveCharScaleBtn">Save Size Scale</button>
+    </div>
+  </div>
+
+  <!-- Step 3: Prompt Input & Global Controls -->
+  <div class="card">
+    <h2>3. Enter Prompt & Generate</h2>
     <textarea id="promptInput" placeholder="Type your prompt here...">Hello world! Generated with custom handwriting AI.</textarea>
 
     <div class="controls">
       <div class="control-group">
-        <label for="slant">Handwriting Slant/Jitter</label>
+        <label for="slant">Handwriting Slant/Jitter <span id="slantVal">3</span></label>
         <input type="range" id="slant" min="0" max="15" value="3">
       </div>
       <div class="control-group">
-        <label for="spacing">Word Spacing</label>
+        <label for="spacing">Word Spacing <span id="spacingVal">45</span></label>
         <input type="range" id="spacing" min="20" max="80" value="45">
       </div>
       <div class="control-group">
-        <label for="size">Font Size</label>
-        <input type="range" id="size" min="30" max="90" value="56">
+        <label for="size">Font Size <span id="sizeVal">56</span></label>
+        <input type="range" id="size" min="20" max="90" value="56">
       </div>
     </div>
 
@@ -312,6 +362,17 @@
     </div>
 
     <canvas id="outputCanvas" width="900" height="450" class="paper-output"></canvas>
+  </div>
+</div>
+
+<!-- Modal for Copy Fallback -->
+<div id="copyModal" class="modal-overlay">
+  <div class="modal-content">
+    <h3>Image Ready</h3>
+    <p style="font-size: 0.85rem; color: #64748b;">Long-press or right-click the image below and choose <strong>"Copy Image"</strong>.</p>
+    <img id="modalImg" src="" alt="Handwriting Output">
+    <br><br>
+    <button id="closeModalBtn">Done</button>
   </div>
 </div>
 
@@ -334,7 +395,6 @@
     setDoc 
   } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-  // Firebase Configuration
   const firebaseConfig = {
     apiKey: "AIzaSyDHalkE8dB7TycHSrBrkZ65fZ_G6aE465c",
     authDomain: "emulator-35ec5.firebaseapp.com",
@@ -348,25 +408,25 @@
   const auth = getAuth(app);
   const db = getFirestore(app);
 
-  // App State Variables
   let currentUser = null;
+  // Stores stroke data per character
   let glyphStore = JSON.parse(localStorage.getItem('hw_ai_glyphs') || '{}');
+  // Stores custom scaling factor per character (default 1.0)
+  let charScaleStore = JSON.parse(localStorage.getItem('hw_ai_scales') || '{}');
+
   let dailyGenerationsCount = 0;
   const MAX_DAILY_REQUESTS = 3;
 
-  // Check Bookmarklet Access Key Status
   function isUnlimitedUser() {
     return localStorage.getItem('hw_unlimited_pass') === 'true';
   }
 
-  // Generate hardware device identifier
   let deviceId = localStorage.getItem('hw_device_id');
   if (!deviceId) {
     deviceId = 'dev_' + Math.random().toString(36).substring(2) + Date.now();
     localStorage.setItem('hw_device_id', deviceId);
   }
 
-  // Auth State Listener
   onAuthStateChanged(auth, async (user) => {
     currentUser = user;
     if (user) {
@@ -378,23 +438,30 @@
         const userRef = doc(db, "handwriting_app_users", user.uid);
         const docSnap = await getDoc(userRef);
 
-        if (docSnap.exists() && docSnap.data().glyphs) {
-          glyphStore = JSON.parse(docSnap.data().glyphs);
-          localStorage.setItem('hw_ai_glyphs', docSnap.data().glyphs);
+        if (docSnap.exists()) {
+          if (docSnap.data().glyphs) {
+            glyphStore = JSON.parse(docSnap.data().glyphs);
+            localStorage.setItem('hw_ai_glyphs', docSnap.data().glyphs);
+          }
+          if (docSnap.data().scales) {
+            charScaleStore = JSON.parse(docSnap.data().scales);
+            localStorage.setItem('hw_ai_scales', docSnap.data().scales);
+          }
         }
       } catch(e) {
-        console.warn("Firestore sync warning, using local storage cache:", e);
+        console.warn("Firestore sync warning:", e);
       }
       
       updateBadges();
+      populateAdjustDropdown();
       checkDailyRateLimit();
+      generateHandwriting();
     } else {
       document.getElementById('authView').style.display = 'flex';
       document.getElementById('appView').style.display = 'none';
     }
   });
 
-  // Login Handlers
   document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = document.getElementById('email').value;
@@ -422,9 +489,10 @@
 
   document.getElementById('logoutBtn').addEventListener('click', () => signOut(auth));
 
-  // Alphabet dropdown setup
+  // Alphabet & Drawing Setup
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!? ";
   const charSelect = document.getElementById('charSelect');
+  const adjustCharSelect = document.getElementById('adjustCharSelect');
   const samplesList = document.getElementById('samplesList');
   
   alphabet.split('').forEach(char => {
@@ -434,7 +502,6 @@
     charSelect.appendChild(opt);
   });
 
-  // Drawing Pad Canvas setup
   const drawCanvas = document.getElementById('drawCanvas');
   const dCtx = drawCanvas.getContext('2d');
   let isDrawing = false;
@@ -528,7 +595,7 @@
     return smoothed;
   }
 
-  // Save Character
+  // Save Character Sample
   document.getElementById('saveCharBtn').addEventListener('click', async () => {
     const rawVal = charSelect.value;
     const char = rawVal === 'SPACE' ? ' ' : rawVal;
@@ -547,29 +614,35 @@
           glyphs: JSON.stringify(glyphStore)
         }, { merge: true });
       } catch(e) {
-        console.warn("Saved locally (Firestore write issue):", e);
+        console.warn("Firestore error:", e);
       }
     }
 
     updateBadges();
+    populateAdjustDropdown();
     
     if (charSelect.selectedIndex < charSelect.options.length - 1) {
       charSelect.selectedIndex++;
     }
     resetDrawPad();
+    generateHandwriting();
   });
 
   document.getElementById('resetAllBtn').addEventListener('click', async () => {
     if (confirm("Clear all saved letters?")) {
       glyphStore = {};
+      charScaleStore = {};
       localStorage.removeItem('hw_ai_glyphs');
+      localStorage.removeItem('hw_ai_scales');
       if (currentUser) {
         try {
-          await setDoc(doc(db, "handwriting_app_users", currentUser.uid), { glyphs: "{}" }, { merge: true });
+          await setDoc(doc(db, "handwriting_app_users", currentUser.uid), { glyphs: "{}", scales: "{}" }, { merge: true });
         } catch(e){}
       }
       updateBadges();
+      populateAdjustDropdown();
       resetDrawPad();
+      generateHandwriting();
     }
   });
 
@@ -578,12 +651,68 @@
     Object.keys(glyphStore).forEach(key => {
       const badge = document.createElement('div');
       badge.className = 'sample-badge';
-      badge.textContent = `'${key === ' ' ? 'Space' : key}' Saved`;
+      const scaleLabel = charScaleStore[key] ? ` (${charScaleStore[key]}x)` : '';
+      badge.textContent = `'${key === ' ' ? 'Space' : key}'${scaleLabel}`;
       samplesList.appendChild(badge);
     });
   }
 
-  // Daily Limit Checking with Access Key Support
+  // Populate Adjust Sizing Dropdown
+  function populateAdjustDropdown() {
+    adjustCharSelect.innerHTML = '';
+    const keys = Object.keys(glyphStore);
+    if (keys.length === 0) {
+      const opt = document.createElement('option');
+      opt.textContent = 'No characters saved yet';
+      adjustCharSelect.appendChild(opt);
+      return;
+    }
+    keys.forEach(key => {
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = key === ' ' ? 'Space' : key;
+      adjustCharSelect.appendChild(opt);
+    });
+    updateCharScaleSlider();
+  }
+
+  function updateCharScaleSlider() {
+    const currentChar = adjustCharSelect.value;
+    const currentScale = charScaleStore[currentChar] || 1.0;
+    document.getElementById('charScale').value = currentScale;
+    document.getElementById('charScaleVal').textContent = `${currentScale}x`;
+  }
+
+  adjustCharSelect.addEventListener('change', updateCharScaleSlider);
+
+  document.getElementById('charScale').addEventListener('input', (e) => {
+    document.getElementById('charScaleVal').textContent = `${e.target.value}x`;
+  });
+
+  document.getElementById('saveCharScaleBtn').addEventListener('click', async () => {
+    const char = adjustCharSelect.value;
+    if (!char || !glyphStore[char]) {
+      alert("Save a drawing for this character first!");
+      return;
+    }
+    const val = parseFloat(document.getElementById('charScale').value);
+    charScaleStore[char] = val;
+    localStorage.setItem('hw_ai_scales', JSON.stringify(charScaleStore));
+
+    if (currentUser) {
+      try {
+        await setDoc(doc(db, "handwriting_app_users", currentUser.uid), {
+          scales: JSON.stringify(charScaleStore)
+        }, { merge: true });
+      } catch(e) {}
+    }
+
+    updateBadges();
+    generateHandwriting();
+    alert(`Size scale for '${char}' set to ${val}x`);
+  });
+
+  // Limits Handling
   const todayStr = new Date().toISOString().split('T')[0];
 
   async function checkDailyRateLimit() {
@@ -596,7 +725,6 @@
     }
 
     badgeEl.classList.remove('unlimited');
-
     if (!currentUser) return true;
 
     try {
@@ -610,7 +738,7 @@
 
       dailyGenerationsCount = Math.max(userCount, deviceCount);
     } catch(e) {
-      console.warn("Could not check cloud limit, falling back to local limit.", e);
+      console.warn("Cloud limit fetch warning:", e);
     }
 
     const remaining = Math.max(0, MAX_DAILY_REQUESTS - dailyGenerationsCount);
@@ -620,7 +748,7 @@
   }
 
   async function incrementDailyLimit() {
-    if (isUnlimitedUser()) return; // Skip increments for admin key holders
+    if (isUnlimitedUser()) return;
 
     dailyGenerationsCount++;
     const remaining = Math.max(0, MAX_DAILY_REQUESTS - dailyGenerationsCount);
@@ -633,7 +761,32 @@
     } catch(e){}
   }
 
-  // Output Canvas Renderer
+  // Interactive Sliders Event Listeners
+  const slantInput = document.getElementById('slant');
+  const spacingInput = document.getElementById('spacing');
+  const sizeInput = document.getElementById('size');
+  const promptInput = document.getElementById('promptInput');
+
+  slantInput.addEventListener('input', (e) => {
+    document.getElementById('slantVal').textContent = e.target.value;
+    generateHandwriting();
+  });
+
+  spacingInput.addEventListener('input', (e) => {
+    document.getElementById('spacingVal').textContent = e.target.value;
+    generateHandwriting();
+  });
+
+  sizeInput.addEventListener('input', (e) => {
+    document.getElementById('sizeVal').textContent = e.target.value;
+    generateHandwriting();
+  });
+
+  promptInput.addEventListener('input', () => {
+    generateHandwriting();
+  });
+
+  // Canvas Generation Engine
   const outCanvas = document.getElementById('outputCanvas');
   const oCtx = outCanvas.getContext('2d');
 
@@ -651,21 +804,15 @@
     }
   }
 
-  async function generateHandwriting(customText) {
-    const allowed = await checkDailyRateLimit();
-    if (!allowed) {
-      alert("Daily limit reached! Use your bookmarklet access key to bypass.");
-      return;
-    }
-
+  async function generateHandwriting() {
     renderLinedPaper();
 
-    const text = customText || document.getElementById('promptInput').value;
-    const jitterVal = parseFloat(document.getElementById('slant').value);
-    const spaceWidth = parseFloat(document.getElementById('spacing').value);
-    const fontSize = parseFloat(document.getElementById('size').value);
+    const text = promptInput.value;
+    const jitterVal = parseFloat(slantInput.value);
+    const spaceWidth = parseFloat(spacingInput.value);
+    const fontSize = parseFloat(sizeInput.value);
     
-    const scale = fontSize / 180;
+    const baseScale = fontSize / 180;
     let cursorX = 40;
     let cursorY = 80;
     const marginX = 40;
@@ -691,6 +838,9 @@
       }
 
       const strokes = glyphStore[char];
+      // Get individual scaling factor if available
+      const charScaleOverride = charScaleStore[char] || 1.0;
+      const effectiveScale = baseScale * charScaleOverride;
 
       if (strokes && strokes.length > 0) {
         const letterJitterX = (Math.random() - 0.5) * (jitterVal * 0.3);
@@ -706,8 +856,8 @@
           oCtx.beginPath();
           
           stroke.forEach((pt, pIdx) => {
-            const px = pt.x * scale + (Math.random() - 0.5) * (jitterVal * 0.05);
-            const py = (pt.y - 135) * scale + (Math.random() - 0.5) * (jitterVal * 0.05);
+            const px = pt.x * effectiveScale + (Math.random() - 0.5) * (jitterVal * 0.05);
+            const py = (pt.y - 135) * effectiveScale + (Math.random() - 0.5) * (jitterVal * 0.05);
 
             if (pIdx === 0) {
               oCtx.moveTo(px, py);
@@ -719,32 +869,52 @@
         });
 
         oCtx.restore();
-        cursorX += (110 * scale) + (Math.random() * 2);
+        cursorX += (110 * effectiveScale) + (Math.random() * 2);
       } else {
-        oCtx.font = `${fontSize * 0.8}px sans-serif`;
+        oCtx.font = `${fontSize * 0.8 * charScaleOverride}px sans-serif`;
         oCtx.fillStyle = '#000000';
         oCtx.fillText(char, cursorX, cursorY);
         cursorX += oCtx.measureText(char).width + 4;
       }
     }
-
-    await incrementDailyLimit();
-    return outCanvas.toDataURL('image/png');
   }
 
-  document.getElementById('generateBtn').addEventListener('click', () => generateHandwriting());
+  document.getElementById('generateBtn').addEventListener('click', async () => {
+    const allowed = await checkDailyRateLimit();
+    if (!allowed) {
+      alert("Daily limit reached! Use your bookmarklet access key to bypass.");
+      return;
+    }
+    await generateHandwriting();
+    await incrementDailyLimit();
+  });
 
-  // Copy Image to Clipboard
+  // Robust Copy Handler with Modal Fallback
   document.getElementById('copyBtn').addEventListener('click', async () => {
     try {
       outCanvas.toBlob(async (blob) => {
-        const item = new ClipboardItem({ 'image/png': blob });
-        await navigator.clipboard.write([item]);
-        alert('Copied handwriting image to clipboard! You can paste it anywhere.');
+        try {
+          const item = new ClipboardItem({ 'image/png': blob });
+          await navigator.clipboard.write([item]);
+          alert('Copied handwriting image to clipboard!');
+        } catch (clipErr) {
+          showCopyModal();
+        }
       });
     } catch (err) {
-      alert('Failed to copy automatically. Use the Download PNG button instead.');
+      showCopyModal();
     }
+  });
+
+  function showCopyModal() {
+    const modal = document.getElementById('copyModal');
+    const img = document.getElementById('modalImg');
+    img.src = outCanvas.toDataURL('image/png');
+    modal.style.display = 'flex';
+  }
+
+  document.getElementById('closeModalBtn').addEventListener('click', () => {
+    document.getElementById('copyModal').style.display = 'none';
   });
 
   document.getElementById('downloadBtn').addEventListener('click', () => {
@@ -754,10 +924,10 @@
     link.click();
   });
 
-  // Initial draw
   resetDrawPad();
   renderLinedPaper();
   updateBadges();
+  populateAdjustDropdown();
 </script>
 </body>
 </html>
